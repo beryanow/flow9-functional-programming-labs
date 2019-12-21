@@ -1,0 +1,14 @@
+var n : int;
+var x : int;
+var y : int;
+
+0: n := 16 goto {1}
+1: x := 0 goto {2}
+2: y := 0 goto {3}
+3: if (0 == 0) goto {4 7} else goto {}
+4: if (y <= n) goto {5} else goto {}
+5: y := (y + (x + (x + 1))) goto {6}
+6: x := (x + 1) goto {3}
+7: if (y > n) goto {8} else goto {}
+8: x := (x - 1) goto {9}
+9: print(x) goto {10}

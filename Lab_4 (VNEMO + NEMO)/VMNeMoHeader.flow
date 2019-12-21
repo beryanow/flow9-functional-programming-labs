@@ -1,0 +1,46 @@
+import ds/set;
+import ds/tree;
+import string;
+import lingo/pegcode/driver;
+
+export {
+    NemoValueType ::= NemoInt, NemoArr;
+    NemoInt(value : int);
+    NemoArr(arr : [NemoValueType]);
+
+    NemoCondition(vars : Tree<string, NemoValueType>);
+    NemoStructure(declarations : [NemoDeclaration], body : NemoInstruction);
+
+    NemoDeclaration(variable : string, type : NemoDeclarationType);
+
+    NemoDeclarationType ::= NemoDeclarationInt, NemoDeclarationArr;
+    NemoDeclarationInt();
+    NemoDeclarationArr(type : NemoDeclarationType);
+
+    NemoExpressionType ::= NemoExpressionBinary, NemoExpressionUnary, NemoExpressionUpdate, NemoExpressionApply, NemoExpressionVar, NemoExpressionInt;
+    NemoExpressionUnary(operation: string, expression : NemoExpressionType);
+    NemoExpressionBinary(operation: string, left_action : NemoExpressionType, right_action : NemoExpressionType);
+    NemoExpressionApply(arr : NemoExpressionType, index : NemoExpressionType);
+    NemoExpressionUpdate(arr : NemoExpressionType, index : NemoExpressionType, value : NemoExpressionType);
+    NemoExpressionVar(name : string);
+    NemoExpressionInt(value : int);
+
+    NemoInstruction ::= NemoPrintInstruction, NemoAssignInstruction, NemoTestInstruction, NemoSequenceInstruction, NemoSelectInstruction, NemoCycleInstruction;
+    NemoPrintInstruction(expression : NemoExpressionType);
+    NemoAssignInstruction(variable : string, value : NemoExpressionType);
+    NemoTestInstruction(condition : string, correct_action : NemoExpressionType, incorrect_action : NemoExpressionType);
+    NemoSequenceInstruction(instructions : [NemoInstruction]);
+    NemoSelectInstruction(instructions : [NemoInstruction]);
+    NemoCycleInstruction(body : NemoInstruction);
+
+    VirtualMachineNemoStructure(declarations : [NemoDeclaration], body : [VirtualMachineNemoInstruction]);
+
+    VirtualMachineNemoInstruction ::= VirtualMachineNemoPrintInstruction, VirtualMachineNemoAssignInstruction, VirtualMachineConditionInstruction;
+    VirtualMachineNemoPrintInstruction(expression : NemoExpressionType, places : [int]);
+    VirtualMachineNemoAssignInstruction(variable : string, value : NemoExpressionType, places : [int]);
+    VirtualMachineConditionInstruction(condition : string, correct_action : NemoExpressionType, incorrect_action : NemoExpressionType, correct_points : [int], incorrect_points : [int]);
+
+    VirtualMachineNemoSequenceStructure(instructions : [[VirtualMachineNemoInstruction]], maximum_point : int);
+    VirtualMachineNemoSelectStructure(instructions : [[VirtualMachineNemoInstruction]], from : [int], to : [int], maximum_point : int);
+    VirtualMachineNemoConfiguration(point : int, condition : NemoCondition);
+}

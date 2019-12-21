@@ -1,0 +1,304 @@
+import VMNeMoHeader;
+
+nemo_structure_to_string(structure : NemoStructure) -> string {
+	strGlue(map(structure.declarations, nemo_declaration_to_string), "\n") + "\n" +
+	nemo_body_to_string(structure.body)
+}
+
+type_to_string(type : NemoDeclarationType) -> string {
+	switch (type) {
+		NemoDeclarationInt(): "int";
+		NemoDeclarationArr(a): "[" + type_to_string(a) + "]";
+	}
+}
+
+nemo_declaration_to_string(declararion : NemoDeclaration) -> string {
+	"var " + declararion.variable + " : " + type_to_string(declararion.type) + ";"
+}
+
+nemo_expression_to_string(expression : NemoExpressionType) -> string {
+	switch (expression) {
+		NemoExpressionUnary(operation, expr): operation + " " + nemo_expression_to_string(expr);
+		NemoExpressionBinary(operation, correct_action, incorrect_action): "(" + nemo_expression_to_string(correct_action) + " " + operation + " " + nemo_expression_to_string(incorrect_action) + ")";
+		NemoExpressionApply(a, i): "apply(" + nemo_expression_to_string(a) + ", " + nemo_expression_to_string(i) + ")";
+		NemoExpressionUpdate(a, i, v): "update(" + nemo_expression_to_string(a) + ", " + nemo_expression_to_string(i) + ", " + nemo_expression_to_string(v) + ")";
+		NemoExpressionVar(name): name;
+		NemoExpressionInt(value): i2s(value);
+	}
+}
+
+nemo_body_to_string(instruction : NemoInstruction) -> string {
+	switch (instruction) {
+		NemoPrintInstruction(expression): "print(" + nemo_expression_to_string(expression) + ")";
+		NemoAssignInstruction(variable, expression): variable + " := " + nemo_expression_to_string(expression);
+		NemoTestInstruction(condition, correct_action, incorrect_action): "(" + nemo_expression_to_string(correct_action) + " " + condition + " " + nemo_expression_to_string(incorrect_action) + ")"; 
+		NemoSequenceInstruction(expression): "{" + strGlue(map(expression, \s -> strGlue(map(strSplit(nemo_body_to_string(s), "\n"), \split_str -> "" + split_str), "")), ";") + "}\n";
+		NemoSelectInstruction(expression): "{" + strGlue(map(expression, \s -> strGlue(map(strSplit(nemo_body_to_string(s), "\n"), \split_str -> "" + split_str), "")), "U") + "}\n";
+		NemoCycleInstruction(body): "*" + nemo_body_to_string(body);
+	}
+}
+
+string_to_nemo_structure(str : string) -> NemoStructure {
+	nemo_parser = compilePegGrammar("#include NeMo.lingo");
+
+	parsic(nemo_parser, str, SemanticActions(mergeTree(defaultPegActions.t, pairs2tree([
+				Pair("Sequence", \s -> NemoSequenceInstruction(concat3([s[0]], [s[1]], s[2]))),
+				Pair("Select", \s -> NemoSelectInstruction(concat3([s[0]], [s[1]], s[2]))),
+				Pair("Condition", \s -> NemoSelectInstruction([NemoSequenceInstruction([NemoTestInstruction(s[0], s[1], s[2]), s[3]]), NemoSequenceInstruction([NemoTestInstruction(if (s[0] == "==") "!=" else
+																																													if (s[0] == "!=") "==" else
+																	 																												if (s[0] == "<") ">=" else
+																	 																												if (s[0] == ">") "<=" else
+																	 																												if (s[0] == "<=") ">" else
+																	 																												if (s[0] == ">=") "<" else "", s[1], s[2]), s[4]])])),
+				Pair("Cycle", \s -> NemoSequenceInstruction([NemoCycleInstruction(NemoSequenceInstruction([NemoTestInstruction(s[0], s[1], s[2]), s[3]])), NemoTestInstruction(if (s[0] == "==") "!=" else
+																																											   if (s[0] == "!=") "==" else
+																																											   if (s[0] == "<") ">=" else
+																																											   if (s[0] == ">") "<=" else
+																																											   if (s[0] == "<=") ">" else
+																																											   if (s[0] == ">=") "<" else "", s[1], s[2])])),]))
+		)
+	)
+}
+
+virtual_machine_nemo_to_string(instruction : VirtualMachineNemoInstruction) -> string {
+	switch (instruction) {
+		VirtualMachineNemoPrintInstruction(expression, places): 
+			"print(" + nemo_expression_to_string(expression) + ")" + " goto {" + strGlue(map(places, i2s), ", ") + "}";
+		VirtualMachineNemoAssignInstruction(variable, value, places): 
+			variable + " := " + nemo_expression_to_string(value) + " goto {" + strGlue(map(places, i2s), ", ") + "}";
+		VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, correct_points, incorrect_points): 
+			"if (" + nemo_expression_to_string(correct_action) + " " + condition + " " + nemo_expression_to_string(incorrect_action) + ") " + "goto {" + strGlue(map(correct_points, i2s), ", ") + "} else " + "goto {" + strGlue(map(incorrect_points, i2s), ", ") + "}";
+	}
+}
+
+virtual_machine_nemo_structure_to_string(structure : VirtualMachineNemoStructure) -> string {
+	fold(structure.declarations, "", \acc, declararion -> acc + nemo_declaration_to_string(declararion) + "\n") + foldi(structure.body, "", \i, acc, s -> acc + i2s(i) + ": " + virtual_machine_nemo_to_string(s) + "\n");
+}
+
+string_to_virtual_machine_nemo_structure(str : string) -> VirtualMachineNemoStructure {
+	virtual_machine_nemo_parser = compilePegGrammar("#include VMNeMo.lingo");
+	parsic(virtual_machine_nemo_parser, str, defaultPegActions);
+}
+
+nemo_structure_to_virtual_machine_nemo_structure(structure : NemoStructure) -> VirtualMachineNemoStructure {
+	VirtualMachineNemoStructure(structure.declarations, nemo_body_to_virtual_machine_nemo_body(structure.body))
+}
+
+explore_virtual_machine_maximum_point(instructions : [VirtualMachineNemoInstruction]) -> int {
+	fold(instructions, -1, \acc, instruction -> max(acc, switch (instruction) { VirtualMachineNemoAssignInstruction(variable, value, places): fold(places, -1, max);
+																				VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, correct_points, incorrect_points): max(fold(correct_points, -1, max), fold(incorrect_points, -1, max));
+																				VirtualMachineNemoPrintInstruction(expression, places): fold(places, -1, max); }));
+}
+
+add_virtual_machine_point(instructions : [VirtualMachineNemoInstruction], n : int) -> [VirtualMachineNemoInstruction] {
+	add_point = \points -> fold(points, [], \acc, l -> concat(acc, [l + n]));
+	fold(instructions, [], \acc, s -> concat(acc, [switch (s) { VirtualMachineNemoAssignInstruction(variable, value, places): VirtualMachineNemoAssignInstruction(variable, value, add_point(places));
+																VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, correct_points, incorrect_points):  VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, add_point(correct_points), add_point(incorrect_points));
+																VirtualMachineNemoPrintInstruction(expression, places): VirtualMachineNemoPrintInstruction(expression, add_point(places)); }]))
+}
+
+replace_virtual_machine_point(instructions : [VirtualMachineNemoInstruction], n : int, m : int) -> [VirtualMachineNemoInstruction] {
+	replace_point = \points -> fold(points, [], \acc, l -> concat(acc, if (l == n) [m] else [l]));
+	replace_instruction = \instruction -> {
+		switch (instruction) {
+			VirtualMachineNemoAssignInstruction(variable, value, places): VirtualMachineNemoAssignInstruction(variable, value, replace_point(places));
+			VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, correct_points, incorrect_points): VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, replace_point(correct_points), replace_point(incorrect_points));
+			VirtualMachineNemoPrintInstruction(expression, places): VirtualMachineNemoPrintInstruction(expression, replace_point(places));
+		}
+	}
+	fold(instructions, [], \acc, s -> concat(acc, [replace_instruction(s)]))
+}
+
+nemo_body_to_virtual_machine_nemo_body(instruction : NemoInstruction) -> [VirtualMachineNemoInstruction] {
+	switch (instruction) {
+		NemoAssignInstruction(variable, value): [VirtualMachineNemoAssignInstruction(variable, value, [1])];
+		NemoPrintInstruction(expression): [VirtualMachineNemoPrintInstruction(expression, [1])];
+		NemoTestInstruction(condition, correct_action, incorrect_action): [VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, [1], [])];
+		NemoSequenceInstruction(instructions): 
+			concatA(fold(instructions, VirtualMachineNemoSequenceStructure([[]], 0), \acc, s -> { virtual_machine_nemo_body = nemo_body_to_virtual_machine_nemo_body(s);
+																								size = explore_virtual_machine_maximum_point(virtual_machine_nemo_body);
+																								VirtualMachineNemoSequenceStructure(concat(acc.instructions, [add_virtual_machine_point(virtual_machine_nemo_body, acc.maximum_point)]), acc.maximum_point + size); }).instructions); // Concatenate array of arrays
+		NemoSelectInstruction(instructions): {
+			choices = fold(instructions, VirtualMachineNemoSelectStructure([[]], [], [], 1), \acc, s -> { virtual_machine_nemo_body = nemo_body_to_virtual_machine_nemo_body(s);
+																										size = explore_virtual_machine_maximum_point(virtual_machine_nemo_body);
+																										VirtualMachineNemoSelectStructure(concat(acc.instructions, [add_virtual_machine_point(virtual_machine_nemo_body, acc.maximum_point)]), concat(acc.from, [acc.maximum_point]), concat(acc.to, [acc.maximum_point + size]), acc.maximum_point + size); });
+			concat([VirtualMachineConditionInstruction("==", NemoExpressionInt(0), NemoExpressionInt(0), choices.from, [])], foldi(choices.instructions, [], \i, acc, s -> concat(acc, replace_virtual_machine_point(s, choices.to[i], choices.maximum_point))));
+		}
+		NemoCycleInstruction(b): {
+			virtual_machine_nemo_body = add_virtual_machine_point(nemo_body_to_virtual_machine_nemo_body(b), 1);
+			size = explore_virtual_machine_maximum_point(virtual_machine_nemo_body);
+			concat([VirtualMachineConditionInstruction("==", NemoExpressionInt(0), NemoExpressionInt(0), [1, size], [])], replace_virtual_machine_point(virtual_machine_nemo_body, size, 0));
+		}
+	}
+}
+
+virtual_machine_action(structure : VirtualMachineNemoStructure, configuration : VirtualMachineNemoConfiguration) -> Set<VirtualMachineNemoConfiguration> {
+	switch (structure.body[configuration.point]) {
+		VirtualMachineNemoPrintInstruction(expression, places): 
+			eitherMap(virtual_machine_evaluation(expression, configuration.condition), \v -> { println(nemo_value_to_string(v));
+																							   fold(places, makeSet(), \acc, point -> insertSet(acc, VirtualMachineNemoConfiguration(point, configuration.condition))); }, makeSet());
+		VirtualMachineNemoAssignInstruction(variable, value, places):
+			eitherMap(virtual_machine_evaluation(value, configuration.condition), \new_val -> { new_state = NemoCondition(setTree(configuration.condition.vars, variable, new_val));
+																							fold(places, makeSet(), \acc, point -> insertSet(acc, VirtualMachineNemoConfiguration(point, new_state))); }, makeSet());
+		VirtualMachineConditionInstruction(condition, correct_action, incorrect_action, correct_points, incorrect_points):
+			eitherMap(virtual_machine_explore_condition(condition, correct_action, incorrect_action, configuration.condition), \b -> 
+					if (b) {
+						fold(correct_points, makeSet(), \acc, point -> insertSet(acc, VirtualMachineNemoConfiguration(point, configuration.condition)));
+					} else {
+						fold(incorrect_points, makeSet(), \acc, point -> insertSet(acc, VirtualMachineNemoConfiguration(point, configuration.condition)));
+					}, makeSet());
+	}
+}
+
+nemo_value_to_string(type : NemoValueType) -> string {
+	switch (type) {
+		NemoInt(value): i2s(value);
+		NemoArr(array): "[" + strGlue(map(array, nemo_value_to_string), ", ") + "]";
+	}
+}
+
+virtual_machine_explore_condition(op : string, first_type : NemoExpressionType, second_type : NemoExpressionType, condition : NemoCondition) -> Maybe<bool> { maybeBind2(\first_evaluation, second_evaluation ->
+	switch (first_evaluation) {
+		NemoInt(x):
+			switch (second_evaluation) {
+				NemoInt(y): Some(if (op == "==") x == y else 
+								 if (op == "!=") x != y else
+								 if (op == "<=") x <= y else
+								 if (op == ">=") x >= y else
+								 if (op == "<") x < y else
+								 if (op == ">") x > y else 
+								 false);
+				default: {
+					None();
+				}
+			}
+		default: {
+			None();
+		} 
+	}) (virtual_machine_evaluation(first_type, condition), virtual_machine_evaluation(second_type, condition));
+}
+
+virtual_machine_evaluation(type : NemoExpressionType, condition : NemoCondition) -> Maybe<NemoValueType> {
+	switch (type) {
+		NemoExpressionUnary(operation, expression): 
+			maybeBind(virtual_machine_evaluation(expression, condition), \evaluated ->
+				switch (evaluated) {
+					NemoInt(x): {
+						Some(NemoInt(if (operation == "+") x else
+						 			 if (operation == "-") -x else 
+									 0));
+					}
+					default: {
+						None();
+					}
+				} );
+		NemoExpressionBinary(operation, left_expression, right_expression): maybeBind2(\left_value, right_value -> 
+				switch (left_value) {
+					NemoInt(x): {
+						switch (right_value) {
+							NemoInt(y):
+								Some(NemoInt(if (operation == "+") x + y else
+											 if (operation == "*") x * y else
+											 if (operation == "-") x - y else
+											 if (operation == "/") x / y else 
+											 0));
+								default: {
+									None();
+								}
+						}
+					}
+					default: {
+						None();
+					}
+				} )(virtual_machine_evaluation(left_expression, condition), virtual_machine_evaluation(right_expression, condition));
+		NemoExpressionApply(array_expression, index_expression):
+			maybeBind2(\array_value, index_value ->
+				switch (array_value) {
+					NemoArr(arr): {
+						switch (index_value) {
+							NemoInt(i):
+								if (i < length(arr)) {
+									Some(arr[i]) 
+								} else {
+									None();
+								}
+							default: {
+								None();
+							}
+						}
+					}
+					default: {
+						None();
+					}
+				}
+			)(virtual_machine_evaluation(array_expression, condition), virtual_machine_evaluation(index_expression, condition));
+		NemoExpressionUpdate(array_expression, index_expression, value_expression):
+			maybeBind(virtual_machine_evaluation(value_expression, condition), \evaluated -> maybeBind2(\array_value, index_value ->
+				switch (array_value) {
+					NemoArr(arr): {
+						switch (index_value) {
+							NemoInt(i):
+								if (i < length(arr)) {
+									Some(NemoArr(foldi(arr, [], \j, acc, x -> concat(acc, [if (i == j) evaluated else x]))))
+								} else {
+									None();
+								}
+							default: {
+								None();
+							}
+						}
+					}
+					default: {
+						None();
+					}
+				} )(virtual_machine_evaluation(array_expression, condition), virtual_machine_evaluation(index_expression, condition)));
+		NemoExpressionVar(variable): {
+			lookupTree(condition.vars, variable);
+		}
+		NemoExpressionInt(value): Some(NemoInt(value));
+	}
+}
+
+proceed_virtual_machine_program(code : VirtualMachineNemoStructure) {
+	evaluated = for(makeSet1(VirtualMachineNemoConfiguration(0, NemoCondition(makeTree()))), \curr -> existsSet(curr, \conf -> conf.point != length(code.body)), \curr -> foldSet(curr, makeSet(), \acc, conf -> mergeSets(acc, virtual_machine_action(code, conf))))
+}
+
+main() {
+	first_variant = string_to_virtual_machine_nemo_structure(getFileContent("sqrt.vnm"));
+
+	println("Here is the VMNeMo code!");
+	println(virtual_machine_nemo_structure_to_string(first_variant));
+
+	println("Here is the VNeMo structure!");
+	println(first_variant);
+
+	println("");
+
+	println("Here is the answer!");
+	proceed_virtual_machine_program(first_variant);
+
+	println("");
+
+	second_variant = string_to_nemo_structure(getFileContent("sqrt.nm"));
+
+	println("Here is the NeMo code!");
+	println(nemo_structure_to_string(second_variant));
+	
+	println("Here is the NeMo structure!");
+	println(second_variant);
+
+	println("");
+
+	println("Here is the VMNeMo structure!");
+	println(nemo_structure_to_virtual_machine_nemo_structure(second_variant));
+
+	println("");
+
+	println("Here is the VMNeMo code!");
+	println(virtual_machine_nemo_structure_to_string(nemo_structure_to_virtual_machine_nemo_structure(second_variant)));
+
+	println("");
+
+	println("Here is the answer!");
+	proceed_virtual_machine_program(nemo_structure_to_virtual_machine_nemo_structure(second_variant));
+}

@@ -1,0 +1,91 @@
+nemo_structure = symbol declaration*:d instruction:b {
+    NemoStructure(:d, :b)
+};
+
+declaration = "var" symbol id:v ":" symbol type:t ";" symbol {
+    NemoDeclaration(:v, :t)
+};
+
+type = int | array;
+
+int = "int" symbol {
+    NemoDeclarationInt() 
+};
+
+array = "[" symbol type:t "]" symbol {
+    NemoDeclarationArr(:t)
+};
+
+arr_value = "," symbol expression;
+sequence = ";" symbol instruction;
+select = "U" symbol instruction;
+
+instruction = print | assign | ifelse | test | seq | select | loop | cycle;
+
+print = "print" symbol "(" symbol expression:e ")" symbol { 
+    NemoPrintInstruction(:e)
+};
+
+assign = id:v ":=" symbol expression:e {
+    NemoAssignInstruction(:v, :e)
+};
+
+ifelse = "if" symbol "(" symbol expression:e1 condition$s symbol expression:e2 ")" symbol instruction:s1 symbol "else" symbol instruction:s2 {
+    Condition($s, :e1, :e2, :s1, :s2)
+};
+
+test = "(" symbol expression:e1 condition$s symbol expression:e2 ")" symbol "?" symbol { 
+    NemoTestInstruction($s, :e1, :e2)
+};
+
+seq = "{" symbol instruction:s1 ";" symbol instruction:s2 sequence*:ss "}" symbol { 
+    Sequence(:s1, :s2, :ss)
+};
+
+select = "{" symbol instruction:s1 "U" symbol instruction:s2 select*:ss "}" symbol {
+    Select(:s1, :s2, :ss)
+};
+
+loop = "*" symbol instruction:b {
+    NemoCycleInstruction(:b)
+};
+
+cycle = "while" symbol "(" symbol expression:e1 condition$s symbol expression:e2 ")" symbol instruction:s1 {
+    Cycle($s, :e1, :e2, :s1)
+};
+
+expression = const | un_op | bin_op | apply | update | var;
+
+const = digit+ $s symbol {
+    NemoExpressionInt(s2i($s))
+};
+
+un_op = "-" $s symbol expression:e {
+    NemoExpressionUnary($s, :e)
+};
+
+bin_op = "(" symbol expression:l ("+"|"*"|"/"|"-"|"%") $s symbol expression:r ")" symbol {
+    NemoExpressionBinary($s, :l, :r) 
+};
+
+apply = "apply" symbol "(" symbol expression:a "," symbol expression:i ")" symbol {
+    NemoExpressionApply(:a, :i)
+};
+
+update = "update" symbol "(" symbol expression:a "," symbol expression:i "," symbol expression:v ")" symbol {
+    NemoExpressionUpdate(:a, :i, :v)
+};
+
+var = id:v { 
+    NemoExpressionVar(:v)
+};
+
+condition = "!=" | "==" | "<=" | ">=" | "<" | ">" ;
+
+id = letter+ $s symbol {
+    $s 
+};
+
+letter = 'a'-'z';
+digit  = '0'-'9';
+symbol = (' ' | '\t' | '\n' | '\r')*;

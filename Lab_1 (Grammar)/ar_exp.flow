@@ -1,0 +1,36 @@
+import net/url_parameter;
+import ds/array;
+import lingo/pegcode/driver;
+
+SumExp(lhs: ArExp, rhs: ArExp);
+MulExp(lhs: ArExp, rhs: ArExp);
+IntExp(val: int);
+
+ArExp ::= SumExp, MulExp, IntExp;
+
+ar2s(e :ArExp) -> string {
+  switch (e : ArExp) {
+      IntExp(val): {
+          i2s(val);
+      }
+      MulExp(mlhs, mrhs): {
+          //strGlue(["(", strGlue([strGlue([strGlue([ar2s(mlhs), ""], "*"), ""], ar2s(mrhs)), ""], ")")], "");
+          strGlue([strGlue([ar2s(mlhs), ""], "*"), ""], ar2s(mrhs));
+      }
+      SumExp(slhs, srhs): {
+          //strGlue(["(", strGlue([strGlue([strGlue([ar2s(slhs), ""], "+"), ""], ar2s(srhs)), ""], ")")], "");
+          strGlue([strGlue([ar2s(slhs), ""], "+"), ""], ar2s(srhs));
+      }
+  }
+}
+
+s2ar(s : string) -> ArExp {
+    parsic(compilePegGrammar("#include lingo/mygrammar.lingo"), s, defaultPegActions);
+}
+
+main() {
+    val = SumExp(MulExp(SumExp(IntExp(3), IntExp(4)), IntExp(7)), IntExp(17));
+    println(ar2s(val));
+    println(s2ar("1+1*1"));
+    println(ar2s(s2ar("1+1*1")));
+}    

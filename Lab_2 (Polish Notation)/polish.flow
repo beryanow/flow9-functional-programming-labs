@@ -1,0 +1,81 @@
+import net/url_parameter;
+import ds/array;
+import lingo/pegcode/driver;
+
+SumExp(lhs: ArExp, rhs: ArExp);
+MulExp(lhs: ArExp, rhs: ArExp);
+IntExp(val: int);
+
+ArExp ::= SumExp, MulExp, IntExp;
+ArRPN ::= OpRPN, ArgRPN;
+ArgRPN(val: int);
+OpRPN ::= SumRPN, MultRPN;
+SumRPN();
+MultRPN();
+
+ar2s(e :ArExp) -> string {
+  switch (e : ArExp) {
+      IntExp(val): {
+          i2s(val);
+      }
+      MulExp(mlhs, mrhs): {
+          strGlue(["(", strGlue([strGlue([strGlue([ar2s(mlhs), ""], "*"), ""], ar2s(mrhs)), ""], ")")], "");
+      }
+      SumExp(slhs, srhs): {
+          strGlue(["(", strGlue([strGlue([strGlue([ar2s(slhs), ""], "+"), ""], ar2s(srhs)), ""], ")")], "");
+      }
+  }
+}
+
+ar2i(e : ArExp) -> int {
+    switch (e : ArExp) {
+        SumExp(l,r): {
+            ar2i(l) + ar2i(r);
+        }
+        MulExp(l,r): {
+            ar2i(l) * ar2i(r);
+        }
+        IntExp(v): {
+            v;
+        }
+    }
+}
+
+s2ar(s : string) -> ArExp {
+    parsic(compilePegGrammar("#include lingo/mygrammarbetter.lingo"), s, defaultPegActions);
+}
+
+ar2rpn(e: ArExp) -> [ArRPN] {
+    switch(e: ArExp) {
+        IntExp(v): {
+            [ArgRPN(v)];
+        }
+        MulExp(l,r): {
+            concat(concat(ar2rpn(l),ar2rpn(r)), [MultRPN()]);
+        }
+        SumExp(l,r): {
+            concat(concat(ar2rpn(l),ar2rpn(r)), [SumRPN()]);
+        }
+    }    
+}
+
+main() {
+    println("Original expression:");
+    str = "((7 + (5 * 2)) + 6)";
+    println(str);
+    println("");
+
+    ar : ArExp = s2ar(str);
+    println("S2AR:");
+    println(ar);
+    println("");
+    
+    arRPN = ar2rpn(ar);
+    println("AR2RPN:");
+    println(arRPN);
+    println("");
+
+    println("AR2S:");
+    println(ar2s(newAr));
+}    
+
